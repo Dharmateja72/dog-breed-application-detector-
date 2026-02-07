@@ -1,0 +1,176 @@
+"use client"
+
+import { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { MessageCircle, X, Send, PawPrint, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface Message {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export function ChatBot() {
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState<Message[]>([
+        { role: 'assistant', content: "Hi! I'm WoofWise AI, your dog specialist. How can I help you today? 🐾" }
+    ]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll to bottom of chat
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages, isOpen]);
+
+    const handleSendMessage = async () => {
+        if (!input.trim() || isLoading) return;
+
+        const userMessage: Message = { role: 'user', content: input };
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        setIsLoading(true);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content }))
+                }),
+            });
+
+            if (!response.ok) throw new Error('Failed to fetch response');
+
+            const data = await response.json();
+            const assistantMessage: Message = { role: 'assistant', content: data.reply };
+            setMessages(prev => [...prev, assistantMessage]);
+        } catch (error) {
+            console.error('Chat error:', error);
+            setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now. Please try again later." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    };
+
+    return (
+        <>
+            {/* Toggle Button */}
+            <Button
+                onClick={() => setIsOpen(prev => !prev)}
+                className={cn(
+                    "fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-all duration-300 hover:scale-110",
+                    isOpen ? "rotate-90 scale-0 opacity-0" : "scale-100 opacity-100"
+                )}
+                size="icon"
+            >
+                <MessageCircle className="h-8 w-8" />
+            </Button>
+
+            {/* Chat Window */}
+            <div
+                className={cn(
+                    "fixed bottom-6 right-6 z-50 transition-all duration-300 transform origin-bottom-right",
+                    isOpen ? "scale-100 opacity-100" : "scale-0 opacity-0 pointer-events-none"
+                )}
+            >
+                <Card className="w-[350px] sm:w-[400px] h-[500px] shadow-2xl border-primary/20 flex flex-col">
+                    <CardHeader className="bg-primary text-primary-foreground p-4 rounded-t-xl flex flex-row items-center justify-between space-y-0">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-white/20 p-1.5 rounded-full">
+                                <PawPrint className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-lg">WoofWise AI</CardTitle>
+                                <p className="text-xs text-primary-foreground/80">Dog Specialist</p>
+                            </div>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-primary-foreground hover:bg-primary-foreground/20 rounded-full h-8 w-8"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </CardHeader>
+
+                    <CardContent className="p-0 flex-1 overflow-hidden relative">
+                        {/* We use a div with overflow-auto for custom scrolling if ScrollArea has issues, 
+                            but using the simple ScrollArea we made earlier should work nicely. 
+                            If ScrollArea expects children to be strictly React Nodes, verify implementation.
+                            Our simple implementation just forwards props to a div.
+                        */}
+                        <ScrollArea className="h-full p-4" ref={scrollRef}>
+                            <div className="space-y-4">
+                                {messages.map((message, index) => (
+                                    <div
+                                        key={index}
+                                        className={cn(
+                                            "flex w-full",
+                                            message.role === 'user' ? "justify-end" : "justify-start"
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
+                                                message.role === 'user'
+                                                    ? "bg-primary text-primary-foreground rounded-br-none"
+                                                    : "bg-muted text-foreground rounded-bl-none"
+                                            )}
+                                        >
+                                            {message.content}
+                                        </div>
+                                    </div>
+                                ))}
+                                {isLoading && (
+                                    <div className="flex justify-start">
+                                        <div className="bg-muted rounded-2xl rounded-bl-none px-4 py-2">
+                                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+
+                    <CardFooter className="p-3 border-t bg-background">
+                        <form
+                            onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
+                            className="flex w-full gap-2"
+                        >
+                            <Input
+                                placeholder="Ask about dogs..."
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                className="flex-1 focus-visible:ring-primary"
+                            />
+                            <Button
+                                type="submit"
+                                size="icon"
+                                disabled={isLoading || !input.trim()}
+                                className={cn("transition-all", input.trim() ? "opacity-100" : "opacity-50")}
+                            >
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        </form>
+                    </CardFooter>
+                </Card>
+            </div>
+        </>
+    );
+}
